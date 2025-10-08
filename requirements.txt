@@ -6,3 +6,13 @@ matplotlib
 pandas_market_calendars
 pytz
 requests
+pytrends
+sentence-transformers
+scikit-learn
+torch
+transformers
+xgboost
+lightgbm
+faiss-cpu
+beautifulsoup4
+tqdm
