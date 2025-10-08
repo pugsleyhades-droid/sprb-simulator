@@ -32,7 +32,7 @@ st.success(f"**Live Price:** ${live_price:.2f}")
 st.markdown("### 📰 Live News Sentiment")
 
 def fetch_news_and_sentiment(query="SPRB", days=3):
-    API_KEY = "YOUR_NEWSAPI_KEY"  # Replace with your actual key
+    API_KEY = "9011c7b1e87c4c7aa0b63dcda687916a"  # Replace with your actual key
     url = f"https://newsapi.org/v2/everything?q={query}&from={(datetime.utcnow() - timedelta(days=days)).date()}&language=en&sortBy=publishedAt&pageSize=20&apiKey={API_KEY}"
     try:
         response = requests.get(url)
