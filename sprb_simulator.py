@@ -12,63 +12,65 @@ import pandas_market_calendars as mcal
 st.set_page_config(page_title="SPRB Advanced Simulator", layout="centered")
 st.title("🚀 Advanced Multi-Day Simulator with Live Sentiment & Market Hours")
 
-# --- 0. SEARCH FOR TICKER BY NAME OR SYMBOL ---
+# --- 0. SEARCH FUNCTION ---
 def search_tickers(query):
     url = f"https://query1.finance.yahoo.com/v1/finance/search?q={query}"
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
     try:
-        response = requests.get(url)
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
         results = response.json().get('quotes', [])
-        # Filter equities only to avoid crypto etc
         equities = [r for r in results if r.get('quoteType') == 'EQUITY']
-        # return list of (symbol, shortname)
         return [(eq['symbol'], eq.get('shortname', eq['symbol'])) for eq in equities]
     except Exception as e:
         st.error(f"Search API error: {e}")
         return []
 
-search_input = st.text_input("Search by Ticker Symbol or Company Name", value="SPRB").strip()
+# --- 1. USER INPUT: SEARCH STOCK ---
+st.sidebar.header("Search Stock")
+query = st.sidebar.text_input("Enter ticker or company name", value="SPRB")
 
-if not search_input:
-    st.warning("Please enter a company name or ticker symbol to search.")
+search_results = []
+if query:
+    with st.spinner("Searching tickers..."):
+        search_results = search_tickers(query)
+
+if not search_results:
+    st.warning(f"No tickers found for '{query}'. Try another search.")
     st.stop()
 
-matches = search_tickers(search_input)
+# Select ticker
+symbol_options = [f"{sym} - {name}" for sym, name in search_results]
+selected = st.sidebar.selectbox("Select a ticker", symbol_options)
+selected_symbol = selected.split(" - ")[0]
 
-if not matches:
-    st.error(f"No tickers found for '{search_input}'. Try another search.")
-    st.stop()
-
-options = [f"{sym} - {name}" for sym, name in matches]
-selected = st.selectbox("Select the correct stock:", options)
-
-ticker_symbol = selected.split(" - ")[0]
-
-# --- 1. LIVE PRICE & HISTORICAL DATA ---
-ticker = yf.Ticker(ticker_symbol)
+# --- 2. FETCH LIVE PRICE & HISTORICAL DATA ---
+ticker = yf.Ticker(selected_symbol)
 try:
     hist = ticker.history(period="60d")
-    if hist.empty:
-        st.error(f"No historical data found for {ticker_symbol}. Please check the ticker and try again.")
-        st.stop()
     live_price = hist["Close"][-1]
-except Exception as e:
-    st.error(f"Failed to fetch price data for {ticker_symbol}: {e}")
+    hist_vol = hist["Volume"]
+except Exception:
+    st.error("Failed to fetch price data.")
     st.stop()
 
 if live_price <= 0:
     st.error("Invalid live price data.")
     st.stop()
 
-st.success(f"**Live Price for {ticker_symbol}:** ${live_price:.2f}")
+st.success(f"**Live Price for {selected_symbol}:** ${live_price:.2f}")
 
-# --- 2. LIVE NEWS SENTIMENT PULL ---
-st.markdown("### 📰 Live News Sentiment")
+# --- 3. LIVE NEWS SENTIMENT PULL ---
+st.markdown(f"### 📰 Live News Sentiment for {selected_symbol}")
 
-def fetch_news_and_sentiment(query=ticker_symbol, days=3):
-    API_KEY = "9011c7b1e87c4c7aa0b63dcda687916a"  # Replace with your actual key
+def fetch_news_and_sentiment(query=selected_symbol, days=3):
+    API_KEY = "9011c7b1e87c4c7aa0b63dcda687916a"  # Replace with your NewsAPI.org key
     url = f"https://newsapi.org/v2/everything?q={query}&from={(datetime.utcnow() - timedelta(days=days)).date()}&language=en&sortBy=publishedAt&pageSize=20&apiKey={API_KEY}"
     try:
         response = requests.get(url)
+        response.raise_for_status()
         articles = response.json().get("articles", [])
         texts = [a['title'] + ". " + (a['description'] or "") for a in articles]
     except Exception:
@@ -101,7 +103,7 @@ sentiment_drift_map = {
 }
 drift_sentiment = sentiment_drift_map[sentiment_label]
 
-# --- 3. HISTORICAL VOLATILITY & VOLUME ---
+# --- 4. HISTORICAL VOLATILITY & VOLUME ---
 hist["Returns"] = hist["Close"].pct_change()
 vol_estimate = hist["Returns"].std()
 
@@ -110,13 +112,13 @@ if np.isnan(vol_estimate) or vol_estimate <= 0:
 elif vol_estimate > 0.10:
     vol_estimate = 0.10
 
-vol_avg = hist["Volume"][-10:].mean()
-vol_norm = vol_avg / hist["Volume"].mean()
+vol_avg = hist_vol[-10:].mean()
+vol_norm = vol_avg / hist_vol.mean()
 volatility_adj = vol_estimate * (1 + (vol_norm - 1) * 0.2)
 
 st.info(f"Estimated Daily Volatility (adjusted by volume): {volatility_adj*100:.2f}%")
 
-# --- 4. USER SETTINGS ---
+# --- 5. USER SETTINGS ---
 forecast_days = st.slider("Forecast Horizon (days)", 1, 30, 5)
 intraday_steps_per_day = st.selectbox(
     "Intraday Steps per Day",
@@ -125,7 +127,7 @@ intraday_steps_per_day = st.selectbox(
 )
 simulations = 1000
 
-# --- 5. MARKET HOURS FILTERING ---
+# --- 6. MARKET HOURS FILTERING ---
 nyse = mcal.get_calendar('NYSE')
 today = pd.Timestamp(datetime.now(pytz.UTC)).normalize()
 schedule = nyse.schedule(start_date=today, end_date=today + timedelta(days=forecast_days * 2))
@@ -143,7 +145,7 @@ for day in trading_days:
 total_steps = len(intraday_times)
 dt = 1 / intraday_steps_per_day
 
-# --- 6. SIMULATION ---
+# --- 7. SIMULATION ---
 mu = (drift_sentiment - 0.5 * volatility_adj ** 2) * dt
 sigma = volatility_adj * np.sqrt(dt)
 
@@ -157,7 +159,7 @@ for t in range(1, total_steps + 1):
     price_paths[:, t] = price_paths[:, t-1] * np.exp(shocks + volume_noise)
     price_paths[:, t] = np.clip(price_paths[:, t], 0.01, None)
 
-# --- 7. DAILY CLOSES ---
+# --- 8. DAILY CLOSES ---
 day_indices = []
 current_day = trading_days[0]
 idx_list = []
@@ -171,7 +173,7 @@ day_indices.append(idx_list)
 
 daily_closes = np.array([price_paths[:, indices[-1]] for indices in day_indices]).T
 
-# --- 8. DISPLAY METRICS ---
+# --- 9. DISPLAY METRICS ---
 st.markdown("### 📅 Daily Closing Price Percentiles")
 percentiles = [5, 50, 95]
 percentile_values = {p: np.percentile(daily_closes, p, axis=0) for p in percentiles}
@@ -183,53 +185,26 @@ df_metrics = pd.DataFrame({
 st.dataframe(df_metrics.style.format("${:.2f}"))
 
 fig, ax = plt.subplots(figsize=(8, 4))
-days = range(1, len(day_indices) + 1)
+days = np.arange(1, len(day_indices) + 1)
 ax.plot(days, percentile_values[5], label='5th Percentile', linestyle='--', color='orange')
 ax.plot(days, percentile_values[50], label='Median', linestyle='-', color='red')
 ax.plot(days, percentile_values[95], label='95th Percentile', linestyle='--', color='green')
 ax.set_xlabel("Trading Day")
 ax.set_ylabel("Price ($)")
-ax.set_title(f"Simulated Daily Closing Price Percentiles for {ticker_symbol}")
+ax.set_title(f"Simulated Daily Closing Price Percentiles for {selected_symbol}")
 ax.legend()
 st.pyplot(fig)
 
-# --- EXPLANATION BLOCK ---
-with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
-    st.markdown("""
-    These lines represent **simulated price movements during market hours** across forecasted trading days.
-
-    Each line shows one **possible intraday scenario** generated using:
-
-    - 📈 **Starting Price**: The current live market price
-    - 🔄 **Volatility**: Based on historical price swings and volume
-    - 🧠 **Drift (trend)**: From live news sentiment (Bullish/Neutral/Bearish)
-    - ⏰ **Market hours only**: 9:30 AM - 4:00 PM ET
-    - 🎲 **Randomness**: Reflects unpredictable market movements and volume noise
-
-    ---
-
-    ### Technical Notes:
-    - `mu`: Expected return per time step (based on sentiment)
-    - `sigma`: Volatility per step (from historical data)
-    - `dt`: Time step size (e.g., 1/13 for 30-minute intervals)
-    - Step formula: `Price[t] = Price[t-1] * exp(mu + randomness)`
-    - 10 paths shown out of 1000 total simulations
-
-    Adjust days and intraday steps above to explore different outcomes.
-    """)
-
-# --- 9. INTRADAY PATHS SAMPLE + AVERAGE ---
-
+# --- 10. INTRADAY PATHS SAMPLE with AVERAGE PATH ---
 st.markdown("### 📈 Sample Intraday Price Paths + Average")
 
 sample_paths = price_paths[:min(10, simulations), :]
 average_path = np.mean(price_paths, axis=0)
 
 time_hours = [(ts - intraday_times[0]).total_seconds() / 3600 for ts in intraday_times]
-time_hours = [0.0] + time_hours  # Include starting point at 0
+time_hours = [0.0] + time_hours  # Add 0 for starting price
 
 fig2, ax2 = plt.subplots(figsize=(8, 4))
-
 for i in range(sample_paths.shape[0]):
     ax2.plot(time_hours, sample_paths[i], lw=1, alpha=0.525, label=f'Path {i+1}')
 
@@ -237,16 +212,41 @@ ax2.plot(time_hours, average_path, lw=2.5, color='black', linestyle='-', label='
 
 ax2.set_xlabel("Hours since simulation start")
 ax2.set_ylabel("Simulated Price ($)")
-ax2.set_title(f"Sample Intraday Price Paths + Average for {ticker_symbol}")
+ax2.set_title(f"Sample Intraday Price Paths + Overall Average for {selected_symbol}")
 ax2.legend(loc='upper left', fontsize='x-small', ncol=2)
 ax2.grid(True)
 
 st.pyplot(fig2)
 
-# --- 10. DEBUG INFO ---
+# --- 11. EXPLANATION BLOCK ---
+with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
+    st.markdown("""
+    These lines represent **simulated price movements of the selected stock during market hours** across multiple forecasted trading days.
+
+    Each line shows one **possible intraday scenario** generated using:
+
+    - 📈 **Starting Price**: The current live market price
+    - 🔄 **Volatility**: Based on historical price swings, adjusted for trading volume
+    - 🧠 **Drift (trend)**: Bias derived from live news sentiment (Bullish/Neutral/Bearish)
+    - ⏰ **Market hours only**: Simulations occur only between 9:30 AM and 4:00 PM ET
+    - 🎲 **Randomness**: Reflects unpredictable market movements and volume-related noise
+
+    ---
+    ### Technical Notes:
+    - `mu`: Expected return per step (based on sentiment)
+    - `sigma`: Volatility per step (from historical data)
+    - `dt`: Time step size (e.g., 1/13 for 30-minute intervals)
+    - Each step: `Price[t] = Price[t-1] * exp(mu + randomness)`
+    - 10 paths are shown out of 1000 total simulations
+
+    ---
+    Adjust the number of days and intraday resolution above to explore different outcomes.
+    """)
+
+# --- 12. DEBUG INFO ---
 with st.expander("🧪 Debug Info"):
     st.write({
-        "Ticker": ticker_symbol,
+        "Selected Ticker": selected_symbol,
         "Live Price": live_price,
         "Sentiment Score": sentiment_score,
         "Sentiment Label": sentiment_label,
