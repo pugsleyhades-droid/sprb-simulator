@@ -157,7 +157,6 @@ st.markdown("### 📅 Daily Closing Price Percentiles")
 percentiles = [5, 50, 95]
 percentile_values = {p: np.percentile(daily_closes, p, axis=0) for p in percentiles}
 
-import pandas as pd
 df_metrics = pd.DataFrame({
     f"P{p}": percentile_values[p] for p in percentiles
 }, index=[f"Day {i+1}" for i in range(len(day_indices))])
@@ -185,10 +184,11 @@ time_hours = [0.0] + time_hours  # initial price at 0
 
 fig2, ax2 = plt.subplots(figsize=(8, 4))
 for i in range(sample_paths.shape[0]):
-    ax2.plot(time_hours, sample_paths[i], lw=1)
+    ax2.plot(time_hours, sample_paths[i], lw=1, label=f'Path {i+1}')
 ax2.set_xlabel("Hours since start")
 ax2.set_ylabel("Price ($)")
 ax2.set_title("Sample Simulated Intraday Price Paths")
+ax2.legend(title="Simulation Paths", loc='upper left', fontsize='small', ncol=2)
 st.pyplot(fig2)
 
 # --- 10. DEBUG INFO ---
@@ -201,6 +201,12 @@ with st.expander("🧪 Debug Info"):
         "Volatility Estimate": vol_estimate,
         "Volume Average (last 10d)": vol_avg,
         "Adjusted Volatility": volatility_adj,
+        "Intraday Steps": intraday_steps_per_day,
+        "Forecast Trading Days": len(day_indices),
+        "Mu per step": mu,
+        "Sigma per step": sigma,
+    })
+
         "Intraday Steps": intraday_steps_per_day,
         "Forecast Trading Days": len(day_indices),
         "Mu per step": mu,
