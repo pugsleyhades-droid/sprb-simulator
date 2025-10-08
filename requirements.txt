@@ -1,4 +1,8 @@
 streamlit
 yfinance
-numpy
+vaderSentiment
+pandas
 matplotlib
+pandas_market_calendars
+pytz
+requests
