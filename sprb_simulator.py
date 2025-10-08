@@ -10,29 +10,62 @@ import pytz
 import pandas_market_calendars as mcal
 
 st.set_page_config(page_title="SPRB Advanced Simulator", layout="centered")
-st.title("🚀 SPRB Advanced Multi-Day Simulator with Live Sentiment & Market Hours")
+st.title("🚀 Advanced Multi-Day Simulator with Live Sentiment & Market Hours")
+
+# --- 0. SEARCH FOR TICKER BY NAME OR SYMBOL ---
+def search_tickers(query):
+    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={query}"
+    try:
+        response = requests.get(url)
+        results = response.json().get('quotes', [])
+        # Filter equities only to avoid crypto etc
+        equities = [r for r in results if r.get('quoteType') == 'EQUITY']
+        # return list of (symbol, shortname)
+        return [(eq['symbol'], eq.get('shortname', eq['symbol'])) for eq in equities]
+    except Exception as e:
+        st.error(f"Search API error: {e}")
+        return []
+
+search_input = st.text_input("Search by Ticker Symbol or Company Name", value="SPRB").strip()
+
+if not search_input:
+    st.warning("Please enter a company name or ticker symbol to search.")
+    st.stop()
+
+matches = search_tickers(search_input)
+
+if not matches:
+    st.error(f"No tickers found for '{search_input}'. Try another search.")
+    st.stop()
+
+options = [f"{sym} - {name}" for sym, name in matches]
+selected = st.selectbox("Select the correct stock:", options)
+
+ticker_symbol = selected.split(" - ")[0]
 
 # --- 1. LIVE PRICE & HISTORICAL DATA ---
-ticker = yf.Ticker("SPRB")
+ticker = yf.Ticker(ticker_symbol)
 try:
     hist = ticker.history(period="60d")
+    if hist.empty:
+        st.error(f"No historical data found for {ticker_symbol}. Please check the ticker and try again.")
+        st.stop()
     live_price = hist["Close"][-1]
-    hist_vol = hist["Volume"]
-except Exception:
-    st.error("Failed to fetch price data.")
+except Exception as e:
+    st.error(f"Failed to fetch price data for {ticker_symbol}: {e}")
     st.stop()
 
 if live_price <= 0:
     st.error("Invalid live price data.")
     st.stop()
 
-st.success(f"**Live Price:** ${live_price:.2f}")
+st.success(f"**Live Price for {ticker_symbol}:** ${live_price:.2f}")
 
 # --- 2. LIVE NEWS SENTIMENT PULL ---
 st.markdown("### 📰 Live News Sentiment")
 
-def fetch_news_and_sentiment(query="SPRB", days=3):
-    API_KEY = "YOUR_NEWSAPI_KEY"  # Replace with your actual key
+def fetch_news_and_sentiment(query=ticker_symbol, days=3):
+    API_KEY = "9011c7b1e87c4c7aa0b63dcda687916a"  # Replace with your actual key
     url = f"https://newsapi.org/v2/everything?q={query}&from={(datetime.utcnow() - timedelta(days=days)).date()}&language=en&sortBy=publishedAt&pageSize=20&apiKey={API_KEY}"
     try:
         response = requests.get(url)
@@ -77,8 +110,8 @@ if np.isnan(vol_estimate) or vol_estimate <= 0:
 elif vol_estimate > 0.10:
     vol_estimate = 0.10
 
-vol_avg = hist_vol[-10:].mean()
-vol_norm = vol_avg / hist_vol.mean()
+vol_avg = hist["Volume"][-10:].mean()
+vol_norm = vol_avg / hist["Volume"].mean()
 volatility_adj = vol_estimate * (1 + (vol_norm - 1) * 0.2)
 
 st.info(f"Estimated Daily Volatility (adjusted by volume): {volatility_adj*100:.2f}%")
@@ -150,67 +183,42 @@ df_metrics = pd.DataFrame({
 st.dataframe(df_metrics.style.format("${:.2f}"))
 
 fig, ax = plt.subplots(figsize=(8, 4))
-days = np.arange(1, len(day_indices) + 1)
+days = range(1, len(day_indices) + 1)
 ax.plot(days, percentile_values[5], label='5th Percentile', linestyle='--', color='orange')
 ax.plot(days, percentile_values[50], label='Median', linestyle='-', color='red')
 ax.plot(days, percentile_values[95], label='95th Percentile', linestyle='--', color='green')
 ax.set_xlabel("Trading Day")
 ax.set_ylabel("Price ($)")
-ax.set_title("Simulated Daily Closing Price Percentiles")
+ax.set_title(f"Simulated Daily Closing Price Percentiles for {ticker_symbol}")
 ax.legend()
 st.pyplot(fig)
 
-# --- EXPLANATION BLOCK FOR INTRADAY PRICE PATHS ---
+# --- EXPLANATION BLOCK ---
 with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
     st.markdown("""
-    These lines represent **simulated price movements of SPRB during market hours** across multiple forecasted trading days.
+    These lines represent **simulated price movements during market hours** across forecasted trading days.
 
     Each line shows one **possible intraday scenario** generated using:
 
-    - 📈 **Starting Price**: The current live market price of SPRB
-    - 🔄 **Volatility**: Based on historical price swings, adjusted for trading volume
-    - 🧠 **Drift (trend)**: Bias derived from live news sentiment (Bullish/Neutral/Bearish)
-    - ⏰ **Market hours only**: Simulations occur only between 9:30 AM and 4:00 PM ET
-    - 🎲 **Randomness**: Reflects unpredictable market movements and volume-related noise
+    - 📈 **Starting Price**: The current live market price
+    - 🔄 **Volatility**: Based on historical price swings and volume
+    - 🧠 **Drift (trend)**: From live news sentiment (Bullish/Neutral/Bearish)
+    - ⏰ **Market hours only**: 9:30 AM - 4:00 PM ET
+    - 🎲 **Randomness**: Reflects unpredictable market movements and volume noise
 
     ---
+
     ### Technical Notes:
-    - `mu`: Expected return per step (based on sentiment)
+    - `mu`: Expected return per time step (based on sentiment)
     - `sigma`: Volatility per step (from historical data)
     - `dt`: Time step size (e.g., 1/13 for 30-minute intervals)
-    - Each step: `Price[t] = Price[t-1] * exp(mu + randomness)`
-    - 10 paths are shown out of 1000 total simulations
+    - Step formula: `Price[t] = Price[t-1] * exp(mu + randomness)`
+    - 10 paths shown out of 1000 total simulations
 
-    ---
-    Adjust the number of days and intraday resolution above to explore different outcomes.
+    Adjust days and intraday steps above to explore different outcomes.
     """)
 
-# --- EXPLANATION BLOCK FOR INTRADAY PRICE PATHS ---
-with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
-    st.markdown("""
-    These lines represent **simulated price movements of SPRB during market hours** across multiple forecasted trading days.
-
-    Each line shows one **possible intraday scenario** generated using:
-
-    - 📈 **Starting Price**: The current live market price of SPRB
-    - 🔄 **Volatility**: Based on historical price swings, adjusted for trading volume
-    - 🧠 **Drift (trend)**: Bias derived from live news sentiment (Bullish/Neutral/Bearish)
-    - ⏰ **Market hours only**: Simulations occur only between 9:30 AM and 4:00 PM ET
-    - 🎲 **Randomness**: Reflects unpredictable market movements and volume-related noise
-
-    ---
-    ### Technical Notes:
-    - `mu`: Expected return per step (based on sentiment)
-    - `sigma`: Volatility per step (from historical data)
-    - `dt`: Time step size (e.g., 1/13 for 30-minute intervals)
-    - Each step: `Price[t] = Price[t-1] * exp(mu + randomness)`
-    - 10 paths are shown out of 1000 total simulations
-
-    ---
-    Adjust the number of days and intraday resolution above to explore different outcomes.
-    """)
-
-# --- 9. INTRADAY PATHS SAMPLE with Average Path ---
+# --- 9. INTRADAY PATHS SAMPLE + AVERAGE ---
 
 st.markdown("### 📈 Sample Intraday Price Paths + Average")
 
@@ -218,11 +226,10 @@ sample_paths = price_paths[:min(10, simulations), :]
 average_path = np.mean(price_paths, axis=0)
 
 time_hours = [(ts - intraday_times[0]).total_seconds() / 3600 for ts in intraday_times]
-time_hours = [0.0] + time_hours  # Add 0 for starting price
+time_hours = [0.0] + time_hours  # Include starting point at 0
 
 fig2, ax2 = plt.subplots(figsize=(8, 4))
 
-# Increase transparency to 0.75 of original alpha (0.7 * 0.75 = 0.525)
 for i in range(sample_paths.shape[0]):
     ax2.plot(time_hours, sample_paths[i], lw=1, alpha=0.525, label=f'Path {i+1}')
 
@@ -230,7 +237,7 @@ ax2.plot(time_hours, average_path, lw=2.5, color='black', linestyle='-', label='
 
 ax2.set_xlabel("Hours since simulation start")
 ax2.set_ylabel("Simulated Price ($)")
-ax2.set_title("Sample Intraday Price Paths + Overall Average")
+ax2.set_title(f"Sample Intraday Price Paths + Average for {ticker_symbol}")
 ax2.legend(loc='upper left', fontsize='x-small', ncol=2)
 ax2.grid(True)
 
@@ -239,6 +246,7 @@ st.pyplot(fig2)
 # --- 10. DEBUG INFO ---
 with st.expander("🧪 Debug Info"):
     st.write({
+        "Ticker": ticker_symbol,
         "Live Price": live_price,
         "Sentiment Score": sentiment_score,
         "Sentiment Label": sentiment_label,
