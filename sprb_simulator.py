@@ -138,7 +138,31 @@ ax2.set_title("Sample Intraday Price Paths & Average Path")
 ax2.legend(loc="upper left", bbox_to_anchor=(1.0, 1))
 st.pyplot(fig)
 
-# --- 9. USER INTERFACE - INTRADAY STEPS ---
+# --- 9. PERCENTILES AND MEAN PRICE GRAPH ---
+# Calculate percentiles for daily closes
+percentiles = [5, 50, 95]
+daily_closes = np.array([price_paths[:, i*intraday_steps_per_day + intraday_steps_per_day - 1] for i in range(len(trading_days))]).T
+percentile_values = {p: np.percentile(daily_closes, p, axis=0) for p in percentiles}
+
+df_metrics = pd.DataFrame({
+    f"P{p}": percentile_values[p] for p in percentiles
+}, index=[f"Day {i+1}" for i in range(len(trading_days))])
+
+st.markdown("### 📅 Daily Closing Price Percentiles")
+st.dataframe(df_metrics.style.format("${:.2f}"))
+
+fig1, ax1 = plt.subplots(figsize=(8, 4))
+days = np.arange(1, len(trading_days) + 1)
+ax1.plot(days, percentile_values[5], label='5th Percentile', linestyle='--', color='orange')
+ax1.plot(days, percentile_values[50], label='Median', linestyle='-', color='red')
+ax1.plot(days, percentile_values[95], label='95th Percentile', linestyle='--', color='green')
+ax1.set_xlabel("Trading Day")
+ax1.set_ylabel("Price ($)")
+ax1.set_title("Simulated Daily Closing Price Percentiles")
+ax1.legend()
+st.pyplot(fig1)
+
+# --- 10. USER INTERFACE - INTRADAY STEPS ---
 intraday_steps_per_day = st.selectbox(
     "Intraday Steps per Day",
     options=[1, 4, 13, 26, 52],
@@ -169,4 +193,3 @@ with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
     ---
     Adjust the number of days and intraday resolution above to explore different outcomes.
     """)
-
