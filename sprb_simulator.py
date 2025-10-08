@@ -141,7 +141,7 @@ daily_closes = np.array([price_paths[:, indices[-1]] for indices in day_indices]
 # --- 8. DISPLAY METRICS ---
 st.markdown("### 📅 Daily Closing Price Percentiles")
 percentiles = [5, 50, 95]
-percentile_values = {p: np.percentile(daily_cles, p, axis=0) for p in percentiles}
+percentile_values = {p: np.percentile(daily_closes, p, axis=0) for p in percentiles}
 
 df_metrics = pd.DataFrame({
     f"P{p}": percentile_values[p] for p in percentiles
@@ -226,6 +226,26 @@ ax.plot(intraday_times_adjusted, avg_path, color='black', label='Average Path', 
 ax.set_xlabel("Time")
 ax.set_ylabel("Price ($)")
 ax.set_title("Simulated Intraday Price Paths (10 samples + Average)")
+ax.legend(loc='upper left')
+
+st.pyplot(fig)
+
+# --- 10. DEBUG INFO ---
+with st.expander("🧪 Debug Info"):
+    st.write({
+        "Live Price": live_price,
+        "Sentiment Score": sentiment_score,
+        "Sentiment Label": sentiment_label,
+        "Drift from Sentiment": drift_sentiment,
+        "Volatility Estimate": vol_estimate,
+        "Volume Average (last 10d)": vol_avg,
+        "Adjusted Volatility": volatility_adj,
+        "Intraday Steps": intraday_steps_per_day,
+        "Forecast Trading Days": len(day_indices),
+        "Mu per step": mu,
+        "Sigma per step": sigma,
+    })
+s (10 samples + Average)")
 ax.legend(loc='upper left')
 
 st.pyplot(fig)
