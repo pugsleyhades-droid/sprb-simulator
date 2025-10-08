@@ -33,7 +33,7 @@ st.markdown("### 📰 Live News Sentiment")
 
 def fetch_news_and_sentiment(query="SPRB", days=3):
     # Using NewsAPI.org free tier example (replace with your API key)
-    API_KEY = "YOUR_NEWSAPI_KEY"  # You need to get your own API key from https://newsapi.org/
+    API_KEY = "9011c7b1e87c4c7aa0b63dcda687916a"  # You need to get your own API key from https://newsapi.org/
     url = f"https://newsapi.org/v2/everything?q={query}&from={(datetime.utcnow() - timedelta(days=days)).date()}&language=en&sortBy=publishedAt&pageSize=20&apiKey={API_KEY}"
     try:
         response = requests.get(url)
