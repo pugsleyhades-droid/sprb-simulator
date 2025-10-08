@@ -185,20 +185,55 @@ with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
     Adjust the number of days and intraday resolution above to explore different outcomes.
     """)
 
-# --- 9. INTRADAY PATHS SAMPLE ---
-st.markdown("### 📈 Sample Intraday Price Paths")
+# --- EXPLANATION BLOCK FOR INTRADAY PRICE PATHS ---
+with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
+    st.markdown("""
+    These lines represent **simulated price movements of SPRB during market hours** across multiple forecasted trading days.
+
+    Each line shows one **possible intraday scenario** generated using:
+
+    - 📈 **Starting Price**: The current live market price of SPRB
+    - 🔄 **Volatility**: Based on historical price swings, adjusted for trading volume
+    - 🧠 **Drift (trend)**: Bias derived from live news sentiment (Bullish/Neutral/Bearish)
+    - ⏰ **Market hours only**: Simulations occur only between 9:30 AM and 4:00 PM ET
+    - 🎲 **Randomness**: Reflects unpredictable market movements and volume-related noise
+
+    ---
+    ### Technical Notes:
+    - `mu`: Expected return per step (based on sentiment)
+    - `sigma`: Volatility per step (from historical data)
+    - `dt`: Time step size (e.g., 1/13 for 30-minute intervals)
+    - Each step: `Price[t] = Price[t-1] * exp(mu + randomness)`
+    - 10 paths are shown out of 1000 total simulations
+
+    ---
+    Adjust the number of days and intraday resolution above to explore different outcomes.
+    """)
+
+# --- 9. INTRADAY PATHS SAMPLE with Average Path ---
+
+st.markdown("### 📈 Sample Intraday Price Paths + Average")
 
 sample_paths = price_paths[:min(10, simulations), :]
+average_path = np.mean(price_paths, axis=0)
+
 time_hours = [(ts - intraday_times[0]).total_seconds() / 3600 for ts in intraday_times]
-time_hours = [0.0] + time_hours
+time_hours = [0.0] + time_hours  # Add 0 for starting price
 
 fig2, ax2 = plt.subplots(figsize=(8, 4))
+
+# Increase transparency to 0.75 of original alpha (0.7 * 0.75 = 0.525)
 for i in range(sample_paths.shape[0]):
-    ax2.plot(time_hours, sample_paths[i], lw=1, label=f'Path {i+1}')
-ax2.set_xlabel("Hours since start")
-ax2.set_ylabel("Price ($)")
-ax2.set_title("Sample Simulated Intraday Price Paths")
-ax2.legend(title="Simulation Paths", loc='upper left', fontsize='small', ncol=2)
+    ax2.plot(time_hours, sample_paths[i], lw=1, alpha=0.525, label=f'Path {i+1}')
+
+ax2.plot(time_hours, average_path, lw=2.5, color='black', linestyle='-', label='Average Path')
+
+ax2.set_xlabel("Hours since simulation start")
+ax2.set_ylabel("Simulated Price ($)")
+ax2.set_title("Sample Intraday Price Paths + Overall Average")
+ax2.legend(loc='upper left', fontsize='x-small', ncol=2)
+ax2.grid(True)
+
 st.pyplot(fig2)
 
 # --- 10. DEBUG INFO ---
