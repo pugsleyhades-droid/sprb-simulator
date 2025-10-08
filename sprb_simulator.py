@@ -32,7 +32,7 @@ st.success(f"**Live Price:** ${live_price:.2f}")
 st.markdown("### 📰 Live News Sentiment")
 
 def fetch_news_and_sentiment(query="SPRB", days=3):
-    API_KEY = "9011c7b1e87c4c7aa0b63dcda687916a"  # Replace with your actual key
+    API_KEY = "YOUR_NEWSAPI_KEY"  # Replace with your actual key
     url = f"https://newsapi.org/v2/everything?q={query}&from={(datetime.utcnow() - timedelta(days=days)).date()}&language=en&sortBy=publishedAt&pageSize=20&apiKey={API_KEY}"
     try:
         response = requests.get(url)
@@ -141,7 +141,7 @@ daily_closes = np.array([price_paths[:, indices[-1]] for indices in day_indices]
 # --- 8. DISPLAY METRICS ---
 st.markdown("### 📅 Daily Closing Price Percentiles")
 percentiles = [5, 50, 95]
-percentile_values = {p: np.percentile(daily_closes, p, axis=0) for p in percentiles}
+percentile_values = {p: np.percentile(daily_cles, p, axis=0) for p in percentiles}
 
 df_metrics = pd.DataFrame({
     f"P{p}": percentile_values[p] for p in percentiles
@@ -186,7 +186,6 @@ with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
     """)
 
 # --- 9. INTRADAY PATHS SAMPLE with Average Path ---
-
 st.markdown("### 📈 Sample Intraday Price Paths + Average")
 
 # Dropdown for adjusting time intervals
@@ -208,4 +207,25 @@ interval_mapping = {
 
 minutes_per_step_adjusted = interval_mapping[time_interval]
 intraday_steps_per_day_adjusted = int(intraday_minutes / minutes_per_step_adjusted)
-total_steps_adjusted = len(trading_days)
+total_steps_adjusted = len(trading_days) * intraday_steps_per_day_adjusted
+
+
+intraday_times_adjusted = []
+for day in trading_days:
+    day_start = day + pd.Timedelta(hours=9, minutes=30)
+    times = [day_start + pd.Timedelta(minutes=minutes_per_step_adjusted * i) for i in range(intraday_steps_per_day_adjusted)]
+    intraday_times_adjusted.extend(times)
+
+fig, ax = plt.subplots(figsize=(10, 6))
+for i in range(10):  # Show 10 sample paths
+    ax.plot(intraday_times_adjusted, price_paths[i], alpha=0.4)
+    
+avg_path = price_paths.mean(axis=0)
+ax.plot(intraday_times_adjusted, avg_path, color='black', label='Average Path', lw=2)
+
+ax.set_xlabel("Time")
+ax.set_ylabel("Price ($)")
+ax.set_title("Simulated Intraday Price Paths (10 samples + Average)")
+ax.legend(loc='upper left')
+
+st.pyplot(fig)
