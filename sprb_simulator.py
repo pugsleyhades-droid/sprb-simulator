@@ -15,7 +15,7 @@ st.title("🚀 SPRB Advanced Multi-Day Simulator with Live Sentiment & Market Ho
 # --- 1. LIVE PRICE & HISTORICAL DATA ---
 ticker = yf.Ticker("SPRB")
 try:
-    hist = ticker.history(period="60d")  # longer for volume and volatility
+    hist = ticker.history(period="60d")
     live_price = hist["Close"][-1]
     hist_vol = hist["Volume"]
 except Exception:
@@ -32,8 +32,7 @@ st.success(f"**Live Price:** ${live_price:.2f}")
 st.markdown("### 📰 Live News Sentiment")
 
 def fetch_news_and_sentiment(query="SPRB", days=3):
-    # Using NewsAPI.org free tier example (replace with your API key)
-    API_KEY = "9011c7b1e87c4c7aa0b63dcda687916a"  # You need to get your own API key from https://newsapi.org/
+    API_KEY = "YOUR_NEWSAPI_KEY"  # Replace with your actual key
     url = f"https://newsapi.org/v2/everything?q={query}&from={(datetime.utcnow() - timedelta(days=days)).date()}&language=en&sortBy=publishedAt&pageSize=20&apiKey={API_KEY}"
     try:
         response = requests.get(url)
@@ -46,7 +45,7 @@ def fetch_news_and_sentiment(query="SPRB", days=3):
 def analyze_sentiment(texts):
     analyzer = SentimentIntensityAnalyzer()
     if not texts:
-        return 0.0  # Neutral if no data
+        return 0.0
     scores = [analyzer.polarity_scores(text)['compound'] for text in texts]
     return np.mean(scores)
 
@@ -62,7 +61,6 @@ elif sentiment_score < -0.05:
 
 st.write(f"Sentiment Score: {sentiment_score:.3f} ({sentiment_label})")
 
-# Map sentiment to daily drift modifier
 sentiment_drift_map = {
     "Bullish": 0.02,
     "Neutral": 0.005,
@@ -77,14 +75,11 @@ vol_estimate = hist["Returns"].std()
 if np.isnan(vol_estimate) or vol_estimate <= 0:
     vol_estimate = 0.007
 elif vol_estimate > 0.10:
-    vol_estimate = 0.10  # cap at 10%
+    vol_estimate = 0.10
 
-# Use rolling volume average (last 10 days)
 vol_avg = hist_vol[-10:].mean()
-
-# Normalize volume for volatility adjustment (just example)
 vol_norm = vol_avg / hist_vol.mean()
-volatility_adj = vol_estimate * (1 + (vol_norm - 1) * 0.2)  # 20% volatility bump or reduction based on volume
+volatility_adj = vol_estimate * (1 + (vol_norm - 1) * 0.2)
 
 st.info(f"Estimated Daily Volatility (adjusted by volume): {volatility_adj*100:.2f}%")
 
@@ -101,13 +96,11 @@ simulations = 1000
 nyse = mcal.get_calendar('NYSE')
 today = pd.Timestamp(datetime.now(pytz.UTC)).normalize()
 schedule = nyse.schedule(start_date=today, end_date=today + timedelta(days=forecast_days * 2))
-trading_days = schedule.index[:forecast_days].tolist()  # first forecast_days trading days
+trading_days = schedule.index[:forecast_days].tolist()
 
-# Create intraday timestamps per trading day, ignoring non-trading days and hours
-intraday_minutes = 6.5 * 60  # 6.5 hours trading day
+intraday_minutes = 6.5 * 60
 minutes_per_step = intraday_minutes / intraday_steps_per_day
 
-# Generate datetime index for all intraday steps
 intraday_times = []
 for day in trading_days:
     day_start = day + pd.Timedelta(hours=9, minutes=30)
@@ -115,29 +108,23 @@ for day in trading_days:
     intraday_times.extend(times)
 
 total_steps = len(intraday_times)
-dt = 1 / (intraday_steps_per_day)  # fraction of a day per step
+dt = 1 / intraday_steps_per_day
 
-# --- 6. SIMULATION WITH VOLUME IMPACT ---
+# --- 6. SIMULATION ---
 mu = (drift_sentiment - 0.5 * volatility_adj ** 2) * dt
 sigma = volatility_adj * np.sqrt(dt)
 
 price_paths = np.zeros((simulations, total_steps + 1))
 price_paths[:, 0] = live_price
-
 np.random.seed(42)
 
 for t in range(1, total_steps + 1):
-    # Random shocks
     shocks = np.random.normal(loc=mu, scale=sigma, size=simulations)
-    
-    # Simulate volume impact as random noise scaled by volume variance (simplified)
-    volume_noise = np.random.normal(loc=0, scale=0.005, size=simulations)  # 0.5% noise
-    
+    volume_noise = np.random.normal(loc=0, scale=0.005, size=simulations)
     price_paths[:, t] = price_paths[:, t-1] * np.exp(shocks + volume_noise)
     price_paths[:, t] = np.clip(price_paths[:, t], 0.01, None)
 
-# --- 7. EXTRACT DAILY CLOSES ---
-# Map intraday_times to days
+# --- 7. DAILY CLOSES ---
 day_indices = []
 current_day = trading_days[0]
 idx_list = []
@@ -146,11 +133,10 @@ for i, ts in enumerate(intraday_times):
         day_indices.append(idx_list)
         idx_list = []
         current_day = ts.normalize()
-    idx_list.append(i + 1)  # +1 because price_paths includes initial price at 0
-day_indices.append(idx_list)  # last day
+    idx_list.append(i + 1)
+day_indices.append(idx_list)
 
-# Calculate daily closes as last intraday step per trading day
-daily_closes = np.array([price_paths[:, indices[-1]] for indices in day_indices]).T  # shape (simulations, days)
+daily_closes = np.array([price_paths[:, indices[-1]] for indices in day_indices]).T
 
 # --- 8. DISPLAY METRICS ---
 st.markdown("### 📅 Daily Closing Price Percentiles")
@@ -163,7 +149,6 @@ df_metrics = pd.DataFrame({
 
 st.dataframe(df_metrics.style.format("${:.2f}"))
 
-# Plot percentiles
 fig, ax = plt.subplots(figsize=(8, 4))
 days = np.arange(1, len(day_indices) + 1)
 ax.plot(days, percentile_values[5], label='5th Percentile', linestyle='--', color='orange')
@@ -180,7 +165,7 @@ st.markdown("### 📈 Sample Intraday Price Paths")
 
 sample_paths = price_paths[:min(10, simulations), :]
 time_hours = [(ts - intraday_times[0]).total_seconds() / 3600 for ts in intraday_times]
-time_hours = [0.0] + time_hours  # initial price at 0
+time_hours = [0.0] + time_hours
 
 fig2, ax2 = plt.subplots(figsize=(8, 4))
 for i in range(sample_paths.shape[0]):
@@ -201,12 +186,6 @@ with st.expander("🧪 Debug Info"):
         "Volatility Estimate": vol_estimate,
         "Volume Average (last 10d)": vol_avg,
         "Adjusted Volatility": volatility_adj,
-        "Intraday Steps": intraday_steps_per_day,
-        "Forecast Trading Days": len(day_indices),
-        "Mu per step": mu,
-        "Sigma per step": sigma,
-    })
-
         "Intraday Steps": intraday_steps_per_day,
         "Forecast Trading Days": len(day_indices),
         "Mu per step": mu,
