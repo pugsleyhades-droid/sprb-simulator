@@ -503,8 +503,3 @@ if run_btn:
             st.download_button("Download CSV", sample_df.to_csv(index=False), file_name=f"{ticker}_sim_sample.csv")
 
 # End of app
-
-    key = "your_actual_api_key"
-    ```
-    Then access it with `st.secrets["newsapi"]["key"]` instead of hardcoding.
-    """)
