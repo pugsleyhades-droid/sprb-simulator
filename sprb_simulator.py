@@ -32,7 +32,7 @@ st.success(f"**Live Price:** ${live_price:.2f}")
 st.markdown("### 📰 Live News Sentiment")
 
 def fetch_news_and_sentiment(query="SPRB", days=3):
-    API_KEY = "9011c7b1e87c4c7aa0b63dcda687916a"  # Replace with your actual key
+    API_KEY = "YOUR_NEWSAPI_KEY"  # Replace with your actual key
     url = f"https://newsapi.org/v2/everything?q={query}&from={(datetime.utcnow() - timedelta(days=days)).date()}&language=en&sortBy=publishedAt&pageSize=20&apiKey={API_KEY}"
     try:
         response = requests.get(url)
@@ -85,7 +85,7 @@ st.info(f"Estimated Daily Volatility (adjusted by volume): {volatility_adj*100:.
 
 # --- 4. USER SETTINGS ---
 forecast_days = st.slider("Forecast Horizon (days)", 1, 30, 5)
-intraday_steps_per_day_adjusted = st.selectbox(
+intraday_steps_per_day = st.selectbox(
     "Intraday Steps per Day",
     options=[1, 4, 13, 26, 52],
     format_func=lambda x: f"{x} steps/day (~{round(6.5*60/x)} min each)"
@@ -99,26 +99,26 @@ schedule = nyse.schedule(start_date=today, end_date=today + timedelta(days=forec
 trading_days = schedule.index[:forecast_days].tolist()
 
 intraday_minutes = 6.5 * 60
-minutes_per_step = intraday_minutes / intraday_steps_per_day_adjusted
+minutes_per_step = intraday_minutes / intraday_steps_per_day
 
 intraday_times = []
 for day in trading_days:
     day_start = day + pd.Timedelta(hours=9, minutes=30)
-    times = [day_start + pd.Timedelta(minutes=minutes_per_step * i) for i in range(intraday_steps_per_day_adjusted)]
+    times = [day_start + pd.Timedelta(minutes=minutes_per_step * i) for i in range(intraday_steps_per_day)]
     intraday_times.extend(times)
 
-total_steps_adjusted = len(intraday_times)
-dt = 1 / intraday_steps_per_day_adjusted
+total_steps = len(intraday_times)
+dt = 1 / intraday_steps_per_day
 
 # --- 6. SIMULATION ---
 mu = (drift_sentiment - 0.5 * volatility_adj ** 2) * dt
 sigma = volatility_adj * np.sqrt(dt)
 
-price_paths = np.zeros((simulations, total_steps_adjusted))  # Align the steps count
+price_paths = np.zeros((simulations, total_steps + 1))
 price_paths[:, 0] = live_price
 np.random.seed(42)
 
-for t in range(1, total_steps_adjusted):
+for t in range(1, total_steps + 1):
     shocks = np.random.normal(loc=mu, scale=sigma, size=simulations)
     volume_noise = np.random.normal(loc=0, scale=0.005, size=simulations)
     price_paths[:, t] = price_paths[:, t-1] * np.exp(shocks + volume_noise)
@@ -129,14 +129,24 @@ day_indices = []
 current_day = trading_days[0]
 idx_list = []
 for i, ts in enumerate(intraday_times):
+    # Check if the intraday timestamp is on a new day
     if ts.normalize() != current_day:
         day_indices.append(idx_list)
         idx_list = []
         current_day = ts.normalize()
-    idx_list.append(i + 1)
+    idx_list.append(i)
+
+# Append the last day's indices
 day_indices.append(idx_list)
 
-daily_closes = np.array([price_paths[:, indices[-1]] for indices in day_indices]).T
+# Now we can extract the last price of each day from the simulation paths
+daily_closes = []
+for indices in day_indices:
+    # Grab the last price for each day
+    daily_closes.append(price_paths[:, indices[-1]])
+
+# Convert list to a numpy array and transpose
+daily_closes = np.array(daily_closes).T  # Shape: (simulations, number_of_days)
 
 # --- 8. DISPLAY METRICS ---
 st.markdown("### 📅 Daily Closing Price Percentiles")
@@ -149,6 +159,7 @@ df_metrics = pd.DataFrame({
 
 st.dataframe(df_metrics.style.format("${:.2f}"))
 
+# Plot the daily percentiles for visualization
 fig, ax = plt.subplots(figsize=(8, 4))
 days = np.arange(1, len(day_indices) + 1)
 ax.plot(days, percentile_values[5], label='5th Percentile', linestyle='--', color='orange')
@@ -189,38 +200,21 @@ with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
 st.markdown("### 📈 Sample Intraday Price Paths + Average")
 
 sample_paths = price_paths[:min(10, simulations), :]
+
+# Calculate average path for all simulations
 average_path = np.mean(price_paths, axis=0)
 
-# Adjust intraday time intervals based on user input
-interval_options = ["10 minutes", "15 minutes", "30 minutes", "1 hour", "5 hours", "10 hours", "20 hours"]
-interval = st.selectbox("Select Time Interval for X-Axis", options=interval_options)
+# Convert intraday times to hours
+time_hours = [(ts - intraday_times[0]).total_seconds() / 3600 for ts in intraday_times]
+time_hours = [0.0] + time_hours
 
-interval_mapping = {
-    "10 minutes": 10,
-    "15 minutes": 15,
-    "30 minutes": 30,
-    "1 hour": 60,
-    "5 hours": 5 * 60,
-    "10 hours": 10 * 60,
-    "20 hours": 20 * 60
-}
-minutes_per_step = interval_mapping[interval]
-
-# Adjust the time axis
-adjusted_times = np.array(intraday_times)[:int(len(intraday_times) * (minutes_per_step / 6.5))]
-
-fig2, ax2 = plt.subplots(figsize=(10, 6))
-
-# Plot sample paths
-for i in range(10):
-    ax2.plot(adjusted_times, sample_paths[i], alpha=0.4)
-
-# Plot the average path
-ax2.plot(adjusted_times, average_path[:len(adjusted_times)], color='black', label="Average Path", lw=2)
-
-ax2.set_xlabel("Time")
+# Plotting the sample intraday paths
+fig, ax2 = plt.subplots(figsize=(10, 6))
+for i in range(min(10, simulations)):
+    ax2.plot(time_hours, sample_paths[i], alpha=0.4, label=f"Path {i+1}")
+ax2.plot(time_hours, average_path, label="Average Path", color='blue', linewidth=2)
+ax2.set_xlabel("Time (Hours)")
 ax2.set_ylabel("Price ($)")
-ax2.set_title(f"Simulated Intraday Price Paths (10 samples + Average) - {interval} Interval")
-ax2.legend(loc='upper left')
-
-st.pyplot(fig2)
+ax2.set_title("Sample Intraday Price Paths & Average Path")
+ax2.legend(loc="upper left", bbox_to_anchor=(1.0, 1))
+st.pyplot(fig)
