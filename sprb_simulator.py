@@ -160,6 +160,31 @@ ax.set_title("Simulated Daily Closing Price Percentiles")
 ax.legend()
 st.pyplot(fig)
 
+# --- EXPLANATION BLOCK FOR INTRADAY PRICE PATHS ---
+with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
+    st.markdown("""
+    These lines represent **simulated price movements of SPRB during market hours** across multiple forecasted trading days.
+
+    Each line shows one **possible intraday scenario** generated using:
+
+    - 📈 **Starting Price**: The current live market price of SPRB
+    - 🔄 **Volatility**: Based on historical price swings, adjusted for trading volume
+    - 🧠 **Drift (trend)**: Bias derived from live news sentiment (Bullish/Neutral/Bearish)
+    - ⏰ **Market hours only**: Simulations occur only between 9:30 AM and 4:00 PM ET
+    - 🎲 **Randomness**: Reflects unpredictable market movements and volume-related noise
+
+    ---
+    ### Technical Notes:
+    - `mu`: Expected return per step (based on sentiment)
+    - `sigma`: Volatility per step (from historical data)
+    - `dt`: Time step size (e.g., 1/13 for 30-minute intervals)
+    - Each step: `Price[t] = Price[t-1] * exp(mu + randomness)`
+    - 10 paths are shown out of 1000 total simulations
+
+    ---
+    Adjust the number of days and intraday resolution above to explore different outcomes.
+    """)
+
 # --- 9. INTRADAY PATHS SAMPLE ---
 st.markdown("### 📈 Sample Intraday Price Paths")
 
