@@ -85,11 +85,6 @@ st.info(f"Estimated Daily Volatility (adjusted by volume): {volatility_adj*100:.
 
 # --- 4. USER SETTINGS ---
 forecast_days = st.slider("Forecast Horizon (days)", 1, 30, 5)
-intraday_steps_per_day = st.selectbox(
-    "Intraday Steps per Day",
-    options=[1, 4, 13, 26, 52],
-    format_func=lambda x: f"{x} steps/day (~{round(6.5*60/x)} min each)"
-)
 simulations = 1000
 
 # --- 5. MARKET HOURS FILTERING ---
@@ -99,77 +94,56 @@ schedule = nyse.schedule(start_date=today, end_date=today + timedelta(days=forec
 trading_days = schedule.index[:forecast_days].tolist()
 
 intraday_minutes = 6.5 * 60
-minutes_per_step = intraday_minutes / intraday_steps_per_day
-
-intraday_times = []
-for day in trading_days:
-    day_start = day + pd.Timedelta(hours=9, minutes=30)
-    times = [day_start + pd.Timedelta(minutes=minutes_per_step * i) for i in range(intraday_steps_per_day)]
-    intraday_times.extend(times)
-
-total_steps = len(intraday_times)
-dt = 1 / intraday_steps_per_day
+intraday_steps_per_day = 13  # Default initial setting
 
 # --- 6. SIMULATION ---
-mu = (drift_sentiment - 0.5 * volatility_adj ** 2) * dt
-sigma = volatility_adj * np.sqrt(dt)
+mu = (drift_sentiment - 0.5 * volatility_adj ** 2) * (1 / intraday_steps_per_day)
+sigma = volatility_adj * np.sqrt(1 / intraday_steps_per_day)
 
-price_paths = np.zeros((simulations, total_steps + 1))
+price_paths = np.zeros((simulations, len(trading_days) * intraday_steps_per_day + 1))
 price_paths[:, 0] = live_price
 np.random.seed(42)
 
-for t in range(1, total_steps + 1):
+for t in range(1, len(price_paths[0])):
     shocks = np.random.normal(loc=mu, scale=sigma, size=simulations)
     volume_noise = np.random.normal(loc=0, scale=0.005, size=simulations)
     price_paths[:, t] = price_paths[:, t-1] * np.exp(shocks + volume_noise)
     price_paths[:, t] = np.clip(price_paths[:, t], 0.01, None)
 
 # --- 7. DAILY CLOSES ---
-day_indices = []
-current_day = trading_days[0]
-idx_list = []
-for i, ts in enumerate(intraday_times):
-    # Check if the intraday timestamp is on a new day
-    if ts.normalize() != current_day:
-        day_indices.append(idx_list)
-        idx_list = []
-        current_day = ts.normalize()
-    idx_list.append(i)
+intraday_times = []
+for day in trading_days:
+    day_start = day + pd.Timedelta(hours=9, minutes=30)
+    times = [day_start + pd.Timedelta(minutes=(intraday_minutes / intraday_steps_per_day) * i) for i in range(intraday_steps_per_day)]
+    intraday_times.extend(times)
 
-# Append the last day's indices
-day_indices.append(idx_list)
+# --- 8. PLOTTING SIMULATED INTRADAY PATHS ---
+sample_paths = price_paths[:min(10, simulations), :]
 
-# Now we can extract the last price of each day from the simulation paths
-daily_closes = []
-for indices in day_indices:
-    # Grab the last price for each day
-    daily_closes.append(price_paths[:, indices[-1]])
+# Calculate average path for all simulations
+average_path = np.mean(price_paths, axis=0)
 
-# Convert list to a numpy array and transpose
-daily_closes = np.array(daily_closes).T  # Shape: (simulations, number_of_days)
+# Convert intraday times to hours
+time_hours = [(ts - intraday_times[0]).total_seconds() / 3600 for ts in intraday_times]
+time_hours = [0.0] + time_hours
 
-# --- 8. DISPLAY METRICS ---
-st.markdown("### 📅 Daily Closing Price Percentiles")
-percentiles = [5, 50, 95]
-percentile_values = {p: np.percentile(daily_closes, p, axis=0) for p in percentiles}
-
-df_metrics = pd.DataFrame({
-    f"P{p}": percentile_values[p] for p in percentiles
-}, index=[f"Day {i+1}" for i in range(len(day_indices))])
-
-st.dataframe(df_metrics.style.format("${:.2f}"))
-
-# Plot the daily percentiles for visualization
-fig, ax = plt.subplots(figsize=(8, 4))
-days = np.arange(1, len(day_indices) + 1)
-ax.plot(days, percentile_values[5], label='5th Percentile', linestyle='--', color='orange')
-ax.plot(days, percentile_values[50], label='Median', linestyle='-', color='red')
-ax.plot(days, percentile_values[95], label='95th Percentile', linestyle='--', color='green')
-ax.set_xlabel("Trading Day")
-ax.set_ylabel("Price ($)")
-ax.set_title("Simulated Daily Closing Price Percentiles")
-ax.legend()
+# Plotting the sample intraday paths
+fig, ax2 = plt.subplots(figsize=(10, 6))
+for i in range(min(10, simulations)):
+    ax2.plot(time_hours, sample_paths[i], alpha=0.4, label=f"Path {i+1}")
+ax2.plot(time_hours, average_path, label="Average Path", color='blue', linewidth=2)
+ax2.set_xlabel("Time (Hours)")
+ax2.set_ylabel("Price ($)")
+ax2.set_title("Sample Intraday Price Paths & Average Path")
+ax2.legend(loc="upper left", bbox_to_anchor=(1.0, 1))
 st.pyplot(fig)
+
+# --- 9. USER INTERFACE - INTRADAY STEPS ---
+intraday_steps_per_day = st.selectbox(
+    "Intraday Steps per Day",
+    options=[1, 4, 13, 26, 52],
+    format_func=lambda x: f"{x} steps/day (~{round(6.5*60/x)} min each)"
+)
 
 # --- EXPLANATION BLOCK FOR INTRADAY PRICE PATHS ---
 with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
@@ -196,25 +170,3 @@ with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
     Adjust the number of days and intraday resolution above to explore different outcomes.
     """)
 
-# --- 9. INTRADAY PATHS SAMPLE with Average Path ---
-st.markdown("### 📈 Sample Intraday Price Paths + Average")
-
-sample_paths = price_paths[:min(10, simulations), :]
-
-# Calculate average path for all simulations
-average_path = np.mean(price_paths, axis=0)
-
-# Convert intraday times to hours
-time_hours = [(ts - intraday_times[0]).total_seconds() / 3600 for ts in intraday_times]
-time_hours = [0.0] + time_hours
-
-# Plotting the sample intraday paths
-fig, ax2 = plt.subplots(figsize=(10, 6))
-for i in range(min(10, simulations)):
-    ax2.plot(time_hours, sample_paths[i], alpha=0.4, label=f"Path {i+1}")
-ax2.plot(time_hours, average_path, label="Average Path", color='blue', linewidth=2)
-ax2.set_xlabel("Time (Hours)")
-ax2.set_ylabel("Price ($)")
-ax2.set_title("Sample Intraday Price Paths & Average Path")
-ax2.legend(loc="upper left", bbox_to_anchor=(1.0, 1))
-st.pyplot(fig)
