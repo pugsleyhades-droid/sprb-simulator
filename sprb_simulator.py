@@ -10,28 +10,31 @@ import pytz
 import pandas_market_calendars as mcal
 
 st.set_page_config(page_title="SPRB Advanced Simulator", layout="centered")
-st.title("🚀 SPRB Advanced Multi-Day Simulator with Live Sentiment & Market Hours")
+st.title("🚀 Advanced Multi-Day Simulator with Live Sentiment & Market Hours")
 
-# --- 1. LIVE PRICE & HISTORICAL DATA ---
-ticker = yf.Ticker("SPRB")
+# --- 1. SEARCH STOCK TICKER ---
+ticker_input = st.text_input("Enter Stock Ticker (e.g., 'SPRB', 'AAPL')", "SPRB").upper()
+
+# Fetch data for the entered ticker
 try:
+    ticker = yf.Ticker(ticker_input)
     hist = ticker.history(period="60d")
     live_price = hist["Close"][-1]
     hist_vol = hist["Volume"]
 except Exception:
-    st.error("Failed to fetch price data.")
+    st.error("Failed to fetch price data. Please check the ticker and try again.")
     st.stop()
 
 if live_price <= 0:
     st.error("Invalid live price data.")
     st.stop()
 
-st.success(f"**Live Price:** ${live_price:.2f}")
+st.success(f"**Live Price of {ticker_input}:** ${live_price:.2f}")
 
 # --- 2. LIVE NEWS SENTIMENT PULL ---
 st.markdown("### 📰 Live News Sentiment")
 
-def fetch_news_and_sentiment(query="SPRB", days=3):
+def fetch_news_and_sentiment(query=ticker_input, days=3):
     API_KEY = "YOUR_NEWSAPI_KEY"  # Replace with your actual key
     url = f"https://newsapi.org/v2/everything?q={query}&from={(datetime.utcnow() - timedelta(days=days)).date()}&language=en&sortBy=publishedAt&pageSize=20&apiKey={API_KEY}"
     try:
@@ -172,24 +175,20 @@ intraday_steps_per_day = st.selectbox(
 # --- EXPLANATION BLOCK FOR INTRADAY PRICE PATHS ---
 with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
     st.markdown("""
-    These lines represent **simulated price movements of SPRB during market hours** across multiple forecasted trading days.
+    These lines represent **simulated price movements** during market hours across multiple forecasted trading days.
 
     Each line shows one **possible intraday scenario** generated using:
 
-    - 📈 **Starting Price**: The current live market price of SPRB
-    - 🔄 **Volatility**: Based on historical price swings, adjusted for trading volume
+    - 📈 **Starting Price**: The current live market price
+    - 🔄 **Volatility**: Based on historical price swings
     - 🧠 **Drift (trend)**: Bias derived from live news sentiment (Bullish/Neutral/Bearish)
     - ⏰ **Market hours only**: Simulations occur only between 9:30 AM and 4:00 PM ET
-    - 🎲 **Randomness**: Reflects unpredictable market movements and volume-related noise
+    - 🎲 **Randomness**: Reflects unpredictable market movements
 
     ---
     ### Technical Notes:
-    - `mu`: Expected return per step (based on sentiment)
-    - `sigma`: Volatility per step (from historical data)
-    - `dt`: Time step size (e.g., 1/13 for 30-minute intervals)
-    - Each step: `Price[t] = Price[t-1] * exp(mu + randomness)`
-    - 10 paths are shown out of 1000 total simulations
+    - Price Path = Price[t] = Price[t-1] * exp(mu + randomness)
+    - Parameters: mu = average return based on sentiment, volatility adjusted by market volume
 
-    ---
     Adjust the number of days and intraday resolution above to explore different outcomes.
     """)
