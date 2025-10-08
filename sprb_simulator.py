@@ -11,46 +11,49 @@ ticker = yf.Ticker("SPRB")
 try:
     hist = ticker.history(period="10d")
     live_price = hist["Close"][-1]
-except Exception as e:
+except Exception:
     st.error("Error fetching price data.")
     st.stop()
 
-if live_price <= 0 or live_price is None:
+if live_price is None or live_price <= 0:
     st.error("Invalid live price.")
     st.stop()
 
 st.success(f"**Live Price**: ${live_price:.2f}")
 
-# Mode selector
+# ----- MODE SELECTOR -----
+st.markdown("### 🧭 Mode Selection")
 mode = st.radio("Choose Mode", ["Auto (Live Data)", "Manual"], index=0)
 
-# Drift and Volatility
+# ----- DRIFT & VOLATILITY -----
 if mode == "Manual":
     drift = st.slider("Expected Drift (%)", -1.0, 1.0, 0.3, step=0.01) / 100
     volatility = st.slider("Expected Volatility (%)", 0.1, 3.0, 0.7, step=0.01) / 100
 else:
-    # Auto mode
+    # Estimate volatility from returns
     hist["Returns"] = hist["Close"].pct_change()
     vol_estimate = hist["Returns"].std()
 
+    # Fallback if bad data
     if np.isnan(vol_estimate) or vol_estimate <= 0:
-        vol_estimate = 0.7 / 100  # fallback
+        vol_estimate = 0.7 / 100  # 0.7%
 
     st.info(f"📊 Estimated Volatility (10-day): {vol_estimate * 100:.2f}%")
     volatility = vol_estimate
 
+    # Set drift based on sentiment — using larger values to compete with vol
     sentiment = st.radio("📣 News Sentiment", ["Bullish", "Neutral", "Bearish"], index=0)
     drift_values = {
-        "Bullish": 0.005,     # +0.5%
-        "Neutral": 0.001,     # +0.1%
-        "Bearish": -0.002     # -0.2%
+        "Bullish": 0.02,     # 2% daily
+        "Neutral": 0.005,    # 0.5% daily
+        "Bearish": -0.01     # -1% daily
     }
     drift = drift_values[sentiment]
     st.info(f"📈 Drift set to {drift * 100:.2f}% based on sentiment.")
 
-# Run simulation
-simulations = 10000
+# ----- SIMULATION -----
 T = 1  # one day
+simulations = 10000
 
 mu = (drift - 0.5 * volatility ** 2) * T
 sigma = volatility * np.sqrt(T)
@@ -58,10 +61,10 @@ sigma = volatility * np.sqrt(T)
 shocks = np.random.normal(loc=mu, scale=sigma, size=simulations)
 simulated_prices = live_price * np.exp(shocks)
 
-# Clean up extreme values just in case
+# Clamp minimum prices
 simulated_prices = np.clip(simulated_prices, 0.01, None)
 
-# Show metrics
+# ----- OUTPUT -----
 p5 = np.percentile(simulated_prices, 5)
 p50 = np.median(simulated_prices)
 p95 = np.percentile(simulated_prices, 95)
@@ -71,7 +74,7 @@ st.metric("5th Percentile", f"${p5:.2f}")
 st.metric("Median", f"${p50:.2f}")
 st.metric("95th Percentile", f"${p95:.2f}")
 
-# Histogram
+# ----- HISTOGRAM -----
 st.markdown("### 📉 Histogram")
 fig, ax = plt.subplots(figsize=(6, 3))
 ax.hist(simulated_prices, bins=30, color='skyblue', edgecolor='black')
@@ -84,15 +87,14 @@ ax.set_ylabel("Frequency")
 ax.legend()
 st.pyplot(fig)
 
-# Debug info (optional)
+# ----- DEBUG -----
 with st.expander("🧪 Debug Info"):
     st.write({
+        "Live Price": live_price,
         "Drift": drift,
         "Volatility": volatility,
-        "Mu (drift part)": mu,
-        "Sigma (vol part)": sigma,
+        "Mu": mu,
+        "Sigma": sigma,
         "Shocks sample": shocks[:5],
         "Simulated prices sample": simulated_prices[:5]
     })
-
-st.pyplot(fig)
