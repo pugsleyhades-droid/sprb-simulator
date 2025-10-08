@@ -10,44 +10,10 @@ import pytz
 import pandas_market_calendars as mcal
 
 st.set_page_config(page_title="SPRB Advanced Simulator", layout="centered")
-st.title("🚀 Advanced Multi-Day Simulator with Live Sentiment & Market Hours")
+st.title("🚀 SPRB Advanced Multi-Day Simulator with Live Sentiment & Market Hours")
 
-# --- 0. SEARCH FUNCTION ---
-def search_tickers(query):
-    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={query}"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-    try:
-        response = requests.get(url, headers=headers, timeout=5)
-        response.raise_for_status()
-        results = response.json().get('quotes', [])
-        equities = [r for r in results if r.get('quoteType') == 'EQUITY']
-        return [(eq['symbol'], eq.get('shortname', eq['symbol'])) for eq in equities]
-    except Exception as e:
-        st.error(f"Search API error: {e}")
-        return []
-
-# --- 1. USER INPUT: SEARCH STOCK ---
-st.sidebar.header("Search Stock")
-query = st.sidebar.text_input("Enter ticker or company name", value="SPRB")
-
-search_results = []
-if query:
-    with st.spinner("Searching tickers..."):
-        search_results = search_tickers(query)
-
-if not search_results:
-    st.warning(f"No tickers found for '{query}'. Try another search.")
-    st.stop()
-
-# Select ticker
-symbol_options = [f"{sym} - {name}" for sym, name in search_results]
-selected = st.sidebar.selectbox("Select a ticker", symbol_options)
-selected_symbol = selected.split(" - ")[0]
-
-# --- 2. FETCH LIVE PRICE & HISTORICAL DATA ---
-ticker = yf.Ticker(selected_symbol)
+# --- 1. LIVE PRICE & HISTORICAL DATA ---
+ticker = yf.Ticker("SPRB")
 try:
     hist = ticker.history(period="60d")
     live_price = hist["Close"][-1]
@@ -60,17 +26,16 @@ if live_price <= 0:
     st.error("Invalid live price data.")
     st.stop()
 
-st.success(f"**Live Price for {selected_symbol}:** ${live_price:.2f}")
+st.success(f"**Live Price:** ${live_price:.2f}")
 
-# --- 3. LIVE NEWS SENTIMENT PULL ---
-st.markdown(f"### 📰 Live News Sentiment for {selected_symbol}")
+# --- 2. LIVE NEWS SENTIMENT PULL ---
+st.markdown("### 📰 Live News Sentiment")
 
-def fetch_news_and_sentiment(query=selected_symbol, days=3):
-    API_KEY = "9011c7b1e87c4c7aa0b63dcda687916a"  # Replace with your NewsAPI.org key
+def fetch_news_and_sentiment(query="SPRB", days=3):
+    API_KEY = "YOUR_NEWSAPI_KEY"  # Replace with your actual key
     url = f"https://newsapi.org/v2/everything?q={query}&from={(datetime.utcnow() - timedelta(days=days)).date()}&language=en&sortBy=publishedAt&pageSize=20&apiKey={API_KEY}"
     try:
         response = requests.get(url)
-        response.raise_for_status()
         articles = response.json().get("articles", [])
         texts = [a['title'] + ". " + (a['description'] or "") for a in articles]
     except Exception:
@@ -103,7 +68,7 @@ sentiment_drift_map = {
 }
 drift_sentiment = sentiment_drift_map[sentiment_label]
 
-# --- 4. HISTORICAL VOLATILITY & VOLUME ---
+# --- 3. HISTORICAL VOLATILITY & VOLUME ---
 hist["Returns"] = hist["Close"].pct_change()
 vol_estimate = hist["Returns"].std()
 
@@ -118,7 +83,7 @@ volatility_adj = vol_estimate * (1 + (vol_norm - 1) * 0.2)
 
 st.info(f"Estimated Daily Volatility (adjusted by volume): {volatility_adj*100:.2f}%")
 
-# --- 5. USER SETTINGS ---
+# --- 4. USER SETTINGS ---
 forecast_days = st.slider("Forecast Horizon (days)", 1, 30, 5)
 intraday_steps_per_day = st.selectbox(
     "Intraday Steps per Day",
@@ -127,7 +92,7 @@ intraday_steps_per_day = st.selectbox(
 )
 simulations = 1000
 
-# --- 6. MARKET HOURS FILTERING ---
+# --- 5. MARKET HOURS FILTERING ---
 nyse = mcal.get_calendar('NYSE')
 today = pd.Timestamp(datetime.now(pytz.UTC)).normalize()
 schedule = nyse.schedule(start_date=today, end_date=today + timedelta(days=forecast_days * 2))
@@ -145,7 +110,7 @@ for day in trading_days:
 total_steps = len(intraday_times)
 dt = 1 / intraday_steps_per_day
 
-# --- 7. SIMULATION ---
+# --- 6. SIMULATION ---
 mu = (drift_sentiment - 0.5 * volatility_adj ** 2) * dt
 sigma = volatility_adj * np.sqrt(dt)
 
@@ -159,7 +124,7 @@ for t in range(1, total_steps + 1):
     price_paths[:, t] = price_paths[:, t-1] * np.exp(shocks + volume_noise)
     price_paths[:, t] = np.clip(price_paths[:, t], 0.01, None)
 
-# --- 8. DAILY CLOSES ---
+# --- 7. DAILY CLOSES ---
 day_indices = []
 current_day = trading_days[0]
 idx_list = []
@@ -173,7 +138,7 @@ day_indices.append(idx_list)
 
 daily_closes = np.array([price_paths[:, indices[-1]] for indices in day_indices]).T
 
-# --- 9. DISPLAY METRICS ---
+# --- 8. DISPLAY METRICS ---
 st.markdown("### 📅 Daily Closing Price Percentiles")
 percentiles = [5, 50, 95]
 percentile_values = {p: np.percentile(daily_closes, p, axis=0) for p in percentiles}
@@ -191,41 +156,18 @@ ax.plot(days, percentile_values[50], label='Median', linestyle='-', color='red')
 ax.plot(days, percentile_values[95], label='95th Percentile', linestyle='--', color='green')
 ax.set_xlabel("Trading Day")
 ax.set_ylabel("Price ($)")
-ax.set_title(f"Simulated Daily Closing Price Percentiles for {selected_symbol}")
+ax.set_title("Simulated Daily Closing Price Percentiles")
 ax.legend()
 st.pyplot(fig)
 
-# --- 10. INTRADAY PATHS SAMPLE with AVERAGE PATH ---
-st.markdown("### 📈 Sample Intraday Price Paths + Average")
-
-sample_paths = price_paths[:min(10, simulations), :]
-average_path = np.mean(price_paths, axis=0)
-
-time_hours = [(ts - intraday_times[0]).total_seconds() / 3600 for ts in intraday_times]
-time_hours = [0.0] + time_hours  # Add 0 for starting price
-
-fig2, ax2 = plt.subplots(figsize=(8, 4))
-for i in range(sample_paths.shape[0]):
-    ax2.plot(time_hours, sample_paths[i], lw=1, alpha=0.525, label=f'Path {i+1}')
-
-ax2.plot(time_hours, average_path, lw=2.5, color='black', linestyle='-', label='Average Path')
-
-ax2.set_xlabel("Hours since simulation start")
-ax2.set_ylabel("Simulated Price ($)")
-ax2.set_title(f"Sample Intraday Price Paths + Overall Average for {selected_symbol}")
-ax2.legend(loc='upper left', fontsize='x-small', ncol=2)
-ax2.grid(True)
-
-st.pyplot(fig2)
-
-# --- 11. EXPLANATION BLOCK ---
+# --- EXPLANATION BLOCK FOR INTRADAY PRICE PATHS ---
 with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
     st.markdown("""
-    These lines represent **simulated price movements of the selected stock during market hours** across multiple forecasted trading days.
+    These lines represent **simulated price movements of SPRB during market hours** across multiple forecasted trading days.
 
     Each line shows one **possible intraday scenario** generated using:
 
-    - 📈 **Starting Price**: The current live market price
+    - 📈 **Starting Price**: The current live market price of SPRB
     - 🔄 **Volatility**: Based on historical price swings, adjusted for trading volume
     - 🧠 **Drift (trend)**: Bias derived from live news sentiment (Bullish/Neutral/Bearish)
     - ⏰ **Market hours only**: Simulations occur only between 9:30 AM and 4:00 PM ET
@@ -243,19 +185,27 @@ with st.expander("ℹ️ What Are Sample Intraday Price Paths?"):
     Adjust the number of days and intraday resolution above to explore different outcomes.
     """)
 
-# --- 12. DEBUG INFO ---
-with st.expander("🧪 Debug Info"):
-    st.write({
-        "Selected Ticker": selected_symbol,
-        "Live Price": live_price,
-        "Sentiment Score": sentiment_score,
-        "Sentiment Label": sentiment_label,
-        "Drift from Sentiment": drift_sentiment,
-        "Volatility Estimate": vol_estimate,
-        "Volume Average (last 10d)": vol_avg,
-        "Adjusted Volatility": volatility_adj,
-        "Intraday Steps": intraday_steps_per_day,
-        "Forecast Trading Days": len(day_indices),
-        "Mu per step": mu,
-        "Sigma per step": sigma,
-    })
+# --- 9. INTRADAY PATHS SAMPLE with Average Path ---
+
+st.markdown("### 📈 Sample Intraday Price Paths + Average")
+
+# Dropdown for adjusting time intervals
+time_interval = st.selectbox(
+    "Select Time Interval for X-axis:",
+    ["10 minutes", "15 minutes", "30 minutes", "1 hour", "5 hours", "10 hours", "20 hours"]
+)
+
+# Mapping selected interval to minutes
+interval_mapping = {
+    "10 minutes": 10,
+    "15 minutes": 15,
+    "30 minutes": 30,
+    "1 hour": 60,
+    "5 hours": 300,
+    "10 hours": 600,
+    "20 hours": 1200
+}
+
+minutes_per_step_adjusted = interval_mapping[time_interval]
+intraday_steps_per_day_adjusted = int(intraday_minutes / minutes_per_step_adjusted)
+total_steps_adjusted = len(trading_days)
