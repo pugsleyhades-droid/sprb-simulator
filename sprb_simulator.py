@@ -209,7 +209,6 @@ minutes_per_step_adjusted = interval_mapping[time_interval]
 intraday_steps_per_day_adjusted = int(intraday_minutes / minutes_per_step_adjusted)
 total_steps_adjusted = len(trading_days) * intraday_steps_per_day_adjusted
 
-
 intraday_times_adjusted = []
 for day in trading_days:
     day_start = day + pd.Timedelta(hours=9, minutes=30)
@@ -219,7 +218,7 @@ for day in trading_days:
 fig, ax = plt.subplots(figsize=(10, 6))
 for i in range(10):  # Show 10 sample paths
     ax.plot(intraday_times_adjusted, price_paths[i], alpha=0.4)
-    
+
 avg_path = price_paths.mean(axis=0)
 ax.plot(intraday_times_adjusted, avg_path, color='black', label='Average Path', lw=2)
 
@@ -245,7 +244,3 @@ with st.expander("🧪 Debug Info"):
         "Mu per step": mu,
         "Sigma per step": sigma,
     })
-s (10 samples + Average)")
-ax.legend(loc='upper left')
-
-st.pyplot(fig)
