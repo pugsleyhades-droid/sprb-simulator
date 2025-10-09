@@ -546,6 +546,121 @@ if st.button("Run blended forecast"):
     df2 = pd.DataFrame(rows2)
     df2_fmt = df2.copy()
     df2_fmt["P(Touch Intraday)"] = (df2_fmt["P(Touch Intraday)"]*100).map("{:.1f}%".format)
+    ### --- SECTION 5: Summaries with Global Show/Hide Toggle ---
+
+st.header("Section 5 — Simple Explanations for Each Feature")
+
+st.markdown("""
+Use the toggle below to show or hide all the feature explanations.  
+These summaries help you or other users quickly understand what each table or chart represents.
+""")
+
+# --- Master toggle ---
+show_all = st.toggle("📘 Show all summaries", value=False)
+expand_state = show_all  # True = expand all, False = collapse all
+
+# Helper function for consistent expander creation
+def explain(title: str, body: str):
+    with st.expander(title, expanded=expand_state):
+        st.markdown(body)
+
+# --- Sentiment Summary ---
+explain("📰 Multi-Source Sentiment (News, Reddit, Google Trends)", """
+**What this shows:**  
+Aggregates real-world mood around the stock from several places:
+- **News headlines** — more weight for credible sources.  
+- **Reddit** — captures retail trader discussion.  
+- **Google Trends** — tracks public search interest.  
+
+These combine into a **Composite Sentiment** (−1 = bearish → +1 = bullish), which is converted into a small **daily drift** guiding the simulation bias.
+""")
+
+# --- Volatility Summary ---
+explain("📈 Historical Volatility & Peer Correlation", """
+**What this shows:**  
+Volatility reflects **how much the stock moves each day**; higher values = larger swings.  
+The correlation with the **XBI biotech ETF** shows how much the stock follows sector trends:
+- +1 → moves together  
+- 0 → independent  
+- −1 → opposite direction  
+""")
+
+# --- Monte Carlo Simulation Summary ---
+explain("🎲 Monte Carlo Simulation", """
+**What this shows:**  
+Thousands of alternate price paths are simulated using volatility and drift.  
+Each represents a possible short-term future.  
+
+The **histogram** shows where those prices end up;  
+the **5th → 95th percentiles** mark an approximate likely range.  
+Wider histograms mean greater uncertainty.
+""")
+
+# --- Intraday Touch Probabilities ---
+explain("📊 Intraday-Touch Probabilities & Best Limit Finder", """
+**What this shows:**  
+Estimates how likely the stock is to **touch** or **close above** target prices (e.g. $200 – $230).  
+The "Best Limit" table multiplies probability × potential profit to highlight  
+which limit price offers the strongest short-term risk–reward.
+""")
+
+# --- Fundamentals ---
+explain("💼 Fundamental Analysis", """
+**What this shows:**  
+Draws company data (cash, debt, revenue, cash-flow runway) from Yahoo Finance  
+to build a normalized **Fundamental Score (−1 to +1)**.  
+Higher values mean a stronger balance sheet and more sustainable operations.
+""")
+
+# --- Risk Regime ---
+explain("🌦️ Market & Sector Risk Regime", """
+**What this shows:**  
+Checks whether the broad market (SPY) and biotech sector (XBI) are trending up.  
+- Both positive → **Risk-on**, forecasts allow optimistic drift.  
+- Either negative → **Risk-off**, forecasts are dampened.  
+This ties short-term simulations to the overall market mood.
+""")
+
+# --- Event Analogs ---
+explain("🧬 Event Analogs (Optional)", """
+**What this shows:**  
+If you upload an `event_analogs_db.csv`, the app uses a language model  
+to find past biotech news events most similar to recent headlines.  
+It averages the following 7- and 30-day stock reactions and adjusts today’s drift accordingly —  
+giving historical context to sentiment-driven moves.
+""")
+
+# --- Blended Forecast ---
+explain("🧠 Blended Forecast vs Baseline", """
+**What this shows:**  
+- **Blue zone:** baseline (sentiment-only) forecast.  
+- **Orange zone:** blended model (adds fundamentals, analogs, market risk).  
+- **Green dashed line:** fundamental “fair-value” trajectory.  
+
+Compare these to see how much of the forecast is driven by fundamentals vs market emotion.
+""")
+
+# --- Blended Ladder ---
+explain("💰 Blended Ladder & Expected Proceeds", """
+**What this shows:**  
+Repeats the limit-ladder table using the **blended** distribution.  
+Each target’s hit-probability × profit helps identify efficient limit levels for short-term trades.  
+""")
+
+# --- Closing guidance ---
+explain("ℹ️ Overall Interpretation Tips", """
+**How to read the dashboard as a whole:**  
+1️⃣ Sentiment + volatility → short-term tone.  
+2️⃣ Monte Carlo → uncertainty range.  
+3️⃣ Fundamentals + market regime → context & realism.  
+4️⃣ Blended forecast → balance of data vs emotion.  
+5️⃣ Ladder → limit order planning.  
+
+Together these views provide a balanced, multi-angle outlook.
+""")
+
+st.success("✅ Section 5 loaded — global Show/Hide control added.")
+
     df2_fmt["Profit if filled ($)"] = df2_fmt["Profit if filled ($)"].map("{:,.0f}".format)
     df2_fmt["Score=P×Profit"] = df2_fmt["Score=P×Profit"].map("{:,.0f}".format)
     st.dataframe(df2_fmt, use_container_width=True)
