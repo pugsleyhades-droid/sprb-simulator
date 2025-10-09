@@ -660,9 +660,10 @@ Together these views provide a balanced, multi-angle outlook.
 """)
 
 st.success("✅ Section 5 loaded — global Show/Hide control added.")
+df2_fmt["P(Touch Intraday)"] = (df2_fmt["P(Touch Intraday)"]*100).map("{:.1f}%".format)
+df2_fmt["Profit if filled ($)"] = df2_fmt["Profit if filled ($)"].map("{:,.0f}".format)
+df2_fmt["Score=P×Profit"] = df2_fmt["Score=P×Profit"].map("{:,.0f}".format)
 
-    df2_fmt["Profit if filled ($)"] = df2_fmt["Profit if filled ($)"].map("{:,.0f}".format)
-    df2_fmt["Score=P×Profit"] = df2_fmt["Score=P×Profit"].map("{:,.0f}".format)
-    st.dataframe(df2_fmt, use_container_width=True)
-    if best_row:
-        st.success(f"Blended ladder suggestion → Limit ${best_row[0]:.0f} | P(touch)≈{best_row[1]*100:.1f}% | Profit≈${best_row[2]:,.0f}")
+st.dataframe(df2_fmt, use_container_width=True)
+if best_row:
+    st.success(f"Blended ladder suggestion → Limit ${best_row[0]:.0f} | P(touch)≈{best_row[1]*100:.1f}% | Profit≈${best_row[2]:,.0f}")
